@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from bayes_regression import (FEATURES, TEST_START_YEAR, BayesLinReg, design,
-                              load, rmse)
+                              load, print_metrics, rmse)
 
 ROOT = Path(__file__).resolve().parents[1]
 VAL_START_YEAR = 2015
@@ -128,10 +128,15 @@ def main() -> None:
     bayes = BayesLinReg().fit(design(trval, mu2, sd2), trval["log_tree"].to_numpy())
     bmean = bayes.predict(design(test, mu2, sd2))[0]
 
-    print(f"\nTest RMSE on log(1 + grains/m^3), {len(test)} days, 2018-2022:")
-    print(f"  Bayesian linear regression     {rmse(yte, bmean):.3f}")
-    print(f"  MLP, single seed (mean ± sd)   {np.mean(scores):.3f} ± {np.std(scores):.3f}")
-    print(f"  MLP, average of {len(SEEDS)} seeds        {rmse(yte, ens):.3f}")
+    print(f"\nTest metrics on log(1 + grains/m^3), {len(test)} days, 2018-2022:")
+    print_metrics(yte, {"Bayesian linear regression": bmean,
+                        f"MLP, average of {len(SEEDS)} seeds": ens})
+    print(f"  MLP single-seed RMSE: {np.mean(scores):.3f} ± {np.std(scores):.3f}")
+    print(f"  MLP typical miss (median): factor of {np.exp(np.median(np.abs(yte - ens))):.2f}")
+    print("\nRMSE by test year (Bayes / MLP):")
+    for yr in sorted(test["year"].unique()):
+        m = test["year"].to_numpy() == yr
+        print(f"  {yr}: {rmse(yte[m], bmean[m]):.3f} / {rmse(yte[m], ens[m]):.3f}")
 
     plot(test, yte, bmean, ens, curves)
 

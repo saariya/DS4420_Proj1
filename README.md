@@ -19,7 +19,12 @@ scripts/
   build_dataset.py              Builds louisville_merged.csv
   bayes_regression.py           Method 1: Bayesian linear regression (NumPy only)
   mlp.py                        Method 2: multilayer perceptron (NumPy only)
+  make_figures.py               Report/poster figures (fig_*.png)
 figures/
+  fig_season.png                The average tree pollen season (report/poster)
+  fig_forecast_2019.png         2019 forecast with 90% intervals (report/poster)
+  fig_drivers.png               What drives the forecast (report/poster)
+  fig_accuracy.png              Both models vs baselines, R² (report/poster)
   forecast_2019.png             Bayesian forecast with 90% intervals, 2019 season
   coefficients.png              Posterior effect of each input
   mlp_vs_bayes_2019.png         Both models' forecasts, 2019 season
@@ -35,11 +40,13 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-The data files are already committed, so you can go straight to the models:
+The data files are already committed, so you can go straight to the models.
+Each script prints every metric quoted below and in the report:
 
 ```bash
 .venv/bin/python scripts/bayes_regression.py
 .venv/bin/python scripts/mlp.py
+.venv/bin/python scripts/make_figures.py
 ```
 
 To rebuild the data from scratch, run `scripts/fetch_humidity.py` and then
@@ -87,7 +94,7 @@ estimates. Results are averaged over 5 random seeds.
 | Model | RMSE (log) | MAE (log) | R² | Pollen level correct | Within one level |
 |---|---|---|---|---|---|
 | Day-of-year average | 1.496 | 1.119 | 0.50 | 60.8% | 94.1% |
-| Same as yesterday | 1.549 | 1.083 | 0.46 | 62.0% | 94.8% |
+| Same as yesterday | 1.549 | 1.083 | 0.46 | 62.7% | 95.0% |
 | Bayesian regression | 1.264 | 0.936 | 0.64 | 64.1% | 97.6% |
 | MLP (5-seed average) | **1.222** | **0.888** | **0.66** | **66.5%** | **98.3%** |
 
@@ -99,7 +106,7 @@ High 90–1,500, Very High 1,500 and up (grains/m³).
 - The Bayesian 90% prediction intervals contain 89.6% of observed test days,
   and the 50% intervals contain 54.9%, so the uncertainty is well calibrated.
   The intervals are wide, though: the typical 90% interval spans a factor of
-  about 50 in pollen count.
+  about 48 in pollen count.
 - Yesterday's pollen and the time of year do most of the work. Weather adds
   about 3% of explained variation in the Bayesian model. Wind speed has a
   small positive effect and rain has no clear effect.

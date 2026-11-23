@@ -89,6 +89,26 @@ def rmse(y, yhat) -> float:
     return float(np.sqrt(np.mean((y - yhat) ** 2)))
 
 
+def pollen_level(log_counts: np.ndarray) -> np.ndarray:
+    """CDC grouped-tree levels: 0 Low <15, 1 Moderate 15-90, 2 High 90-1500, 3 Very High."""
+    g = np.expm1(log_counts) + 1e-9  # so an observed count of exactly 15 or 90 isn't nudged below
+    return np.select([g >= 1500, g >= 90, g >= 15], [3, 2, 1], 0)
+
+
+def print_metrics(y: np.ndarray, preds: dict) -> None:
+    """Table of test metrics shared by both models (all on log(1 + grains/m^3))."""
+    lv = pollen_level(y)
+    print(f"  {'model':32s} {'RMSE':>6s} {'MAE':>6s} {'R2':>6s} {'level':>7s} "
+          f"{'within1':>8s} {'high recall':>12s}")
+    for name, p in preds.items():
+        lp = pollen_level(p)
+        print(f"  {name:32s} {rmse(y, p):6.3f} {np.mean(np.abs(y - p)):6.3f} "
+              f"{1 - np.mean((y - p) ** 2) / y.var():6.3f} {np.mean(lp == lv):7.1%} "
+              f"{np.mean(np.abs(lp - lv) <= 1):8.1%} {np.mean(lp[lv >= 2] >= 2):12.1%}")
+    print("  (level = CDC pollen level correct; high recall = share of High/Very High "
+          "days predicted High or above)")
+
+
 def main() -> None:
     d = load()
     train, test = d[d["year"] < TEST_START_YEAR], d[d["year"] >= TEST_START_YEAR]
@@ -107,14 +127,17 @@ def main() -> None:
     lag_only = BayesLinReg().fit(Xtr[:, :2], ytr).predict(Xte[:, :2])[0]
 
     print(f"train days {len(train)}  test days {len(test)}\n")
-    print("Test RMSE on log(1 + grains/m^3):")
-    for name, pred in [("climatology (day of year)", clim_pred),
-                       ("persistence (yesterday)", persist),
-                       ("Bayes, lag only", lag_only),
-                       ("Bayes, lag + season + weather", mean)]:
-        print(f"  {name:32s} {rmse(yte, pred):.3f}")
-    cover = np.mean((yte >= lo) & (yte <= hi))
-    print(f"\n90% predictive interval coverage on test: {cover:.1%}")
+    print("Test metrics on log(1 + grains/m^3):")
+    print_metrics(yte, {"climatology (day of year)": clim_pred,
+                        "persistence (yesterday)": persist,
+                        "Bayes, lag only": lag_only,
+                        "Bayes, lag + season + weather": mean})
+    _, lo50, hi50 = model.predict(Xte, level=0.5)
+    print(f"\npredictive interval coverage on test: "
+          f"50% -> {np.mean((yte >= lo50) & (yte <= hi50)):.1%}, "
+          f"90% -> {np.mean((yte >= lo) & (yte <= hi)):.1%}")
+    print(f"median 90% interval spans a factor of {np.exp(np.median(hi - lo)):.0f} in pollen count")
+    print(f"typical miss (median): factor of {np.exp(np.median(np.abs(yte - mean))):.2f}")
     print(f"posterior mean noise sd: {np.sqrt(model.b / (model.a - 1)):.3f}\n")
 
     clo, chi = model.coef_interval()
