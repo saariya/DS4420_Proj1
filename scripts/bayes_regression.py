@@ -148,6 +148,16 @@ def main() -> None:
         print(f"  {n:22s} {m:+7.3f}   [{l:+.3f}, {h:+.3f}]{flag}")
     print("  (* = interval excludes 0)")
 
+    # Prior sensitivity: refit with weaker and stronger shrinkage on the coefficients.
+    global PRIOR_PRECISION
+    default = PRIOR_PRECISION
+    print("\nprior sensitivity (coefficient prior precision -> test RMSE, 90% coverage):")
+    for lam in [0.01, 1, 10, 100, 1000]:
+        PRIOR_PRECISION = lam
+        p, l90, h90 = BayesLinReg().fit(Xtr, ytr).predict(Xte)
+        print(f"  {lam:>7g}: RMSE {rmse(yte, p):.3f}, coverage {np.mean((yte >= l90) & (yte <= h90)):.1%}")
+    PRIOR_PRECISION = default
+
     plot(test, yte, mean, lo, hi, names[1:], model.m[1:], clo[1:], chi[1:])
 
 
