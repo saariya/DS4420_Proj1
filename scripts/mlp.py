@@ -1,17 +1,12 @@
-"""Second method: a multilayer perceptron (MLP) for daily tree pollen, in NumPy.
+"""
+DS 4420 Project - MLP (written in NumPy) for daily tree pollen, as a comparison
+to the Bayesian regression. Same features and test years (2018-2022).
 
-Same target, features and train/test split as scripts/bayes_regression.py, so the
-two models are directly comparable:
-  target  log(1 + tree pollen grains/m^3), March-June
-  train   2003-2014 seasons (fit weights)
-  val     2015-2017 seasons (early stopping only)
-  test    2018-2022 seasons (reported once at the end)
+Train on 2003-2014, use 2015-2017 for early stopping.
+Network: inputs -> 32 ReLU -> 16 ReLU -> 1 output, Adam, MSE loss + L2 penalty.
+We average over 5 random seeds since results change a bit between runs.
 
-Network: inputs -> 32 ReLU -> 16 ReLU -> 1 linear, trained with Adam on mean
-squared error plus L2 weight decay. Results are averaged over several random
-seeds because small networks vary run to run.
-
-Run from the repo root:  .venv/bin/python scripts/mlp.py
+Run from the repo root: .venv/bin/python scripts/mlp.py
 """
 
 from pathlib import Path
@@ -33,9 +28,9 @@ SEEDS = range(5)
 
 
 class MLP:
-    def __init__(self, n_in: int, hidden, rng: np.random.Generator):
+    def __init__(self, n_in, hidden, rng):
         sizes = [n_in, *hidden, 1]
-        # He initialization suits ReLU layers.
+        # He initialization (works well with ReLU)
         self.W = [rng.normal(0, np.sqrt(2 / a), (a, b)) for a, b in zip(sizes, sizes[1:])]
         self.b = [np.zeros(b) for b in sizes[1:]]
 
@@ -51,7 +46,7 @@ class MLP:
 
     def grads(self, X, y):
         acts = self.forward(X)
-        delta = 2 * (acts[-1][:, 0] - y)[:, None] / len(y)  # d(MSE)/d(output)
+        delta = 2 * (acts[-1][:, 0] - y)[:, None] / len(y)  # derivative of MSE
         gW, gb = [], []
         for i in reversed(range(len(self.W))):
             gW.insert(0, acts[i].T @ delta + WEIGHT_DECAY * self.W[i])
@@ -65,7 +60,7 @@ class MLP:
         return self.W + self.b
 
 
-def train(Xtr, ytr, Xval, yval, seed: int) -> tuple[MLP, list, list]:
+def train(Xtr, ytr, Xval, yval, seed):
     rng = np.random.default_rng(seed)
     net = MLP(Xtr.shape[1], HIDDEN, rng)
     m = [np.zeros_like(p) for p in net.params]
@@ -80,7 +75,8 @@ def train(Xtr, ytr, Xval, yval, seed: int) -> tuple[MLP, list, list]:
             idx = order[start:start + BATCH]
             gW, gb = net.grads(Xtr[idx], ytr[idx])
             step += 1
-            for p, g, mi, vi in zip(net.params, gW + gb, m, v):  # Adam update
+            # Adam update
+            for p, g, mi, vi in zip(net.params, gW + gb, m, v):
                 mi[:] = b1 * mi + (1 - b1) * g
                 vi[:] = b2 * vi + (1 - b2) * g * g
                 p -= LR * (mi / (1 - b1 ** step)) / (np.sqrt(vi / (1 - b2 ** step)) + eps)
@@ -95,18 +91,19 @@ def train(Xtr, ytr, Xval, yval, seed: int) -> tuple[MLP, list, list]:
             if wait >= PATIENCE:
                 break
 
-    for p, saved in zip(net.params, best_params):  # restore best-on-validation weights
+    # keep the weights with the best validation error
+    for p, saved in zip(net.params, best_params):
         p[:] = saved
     return net, hist_tr, hist_val
 
 
-def main() -> None:
+def main():
     d = load()
     fit = d[d["year"] < VAL_START_YEAR]
     val = d[(d["year"] >= VAL_START_YEAR) & (d["year"] < TEST_START_YEAR)]
     test = d[d["year"] >= TEST_START_YEAR]
 
-    # Standardize with the fitting years only; drop the intercept column (MLP has biases).
+    # standardize with the training years only, and drop the column of 1s (the MLP has biases)
     mu, sd = fit[FEATURES].mean(), fit[FEATURES].std()
     Xfit, Xval, Xte = (design(x, mu, sd)[:, 1:] for x in (fit, val, test))
     yfit, yval, yte = (x["log_tree"].to_numpy() for x in (fit, val, test))
@@ -122,7 +119,7 @@ def main() -> None:
         curves = curves or (htr, hval)
     ens = np.mean(preds, axis=0)
 
-    # Bayes model refit on train+val (2003-2017), exactly as in bayes_regression.py.
+    # Bayesian model on 2003-2017, same as in bayes_regression.py
     trval = d[d["year"] < TEST_START_YEAR]
     mu2, sd2 = trval[FEATURES].mean(), trval[FEATURES].std()
     bayes = BayesLinReg().fit(design(trval, mu2, sd2), trval["log_tree"].to_numpy())
@@ -141,7 +138,7 @@ def main() -> None:
     plot(test, yte, bmean, ens, curves)
 
 
-def plot(test, yte, bmean, ens, curves) -> None:
+def plot(test, yte, bmean, ens, curves):
     fig_dir = ROOT / "figures"
     show = test["year"].to_numpy() == 2019
     dates = test["date"].to_numpy()[show]

@@ -1,17 +1,12 @@
-"""Report and poster figures for the pollen forecasting analysis.
+"""
+DS 4420 Project - figures for the report and poster.
 
-Style: Tufte-minded. Each title states the finding, labels sit on the data
-instead of in legends, there are no chart borders and only faint gridlines,
-and gray is used for context (baselines, uncertain effects) so color points
-at what matters. One y-axis per chart.
+  fig_season.png         average tree pollen season by day of year
+  fig_forecast_2019.png  2019 forecast with 90% prediction intervals
+  fig_drivers.png        posterior coefficients with 95% posterior intervals
+  fig_accuracy.png       R^2 for both models and both baselines
 
-Outputs (figures/):
-  fig_season.png        what the data looks like: the average tree pollen season
-  fig_forecast_2019.png the forecast against a full test season, with 90% intervals
-  fig_drivers.png       what drives the forecast (posterior coefficients)
-  fig_accuracy.png      how both models compare with simple baselines
-
-Run from the repo root:  .venv/bin/python scripts/make_figures.py
+Run from the repo root: .venv/bin/python scripts/make_figures.py
 """
 
 from pathlib import Path
@@ -30,7 +25,7 @@ from bayes_regression import (FEATURES, TEST_START_YEAR, BayesLinReg, design,
 ROOT = Path(__file__).resolve().parents[1]
 FIG = ROOT / "figures"
 
-# Colors: slots 1-2 of the validated reference categorical palette, plus neutral inks.
+# colors (blue = Bayesian model, orange = MLP, grays for everything else)
 BLUE, ORANGE = "#2a78d6", "#eb6834"
 INK, INK2, MUTED, GRID = "#0b0b0b", "#52514e", "#a3a29d", "#e6e5e1"
 
@@ -74,11 +69,11 @@ LABELS = {
 POLLEN_TICKS = [0, 10, 100, 1000]
 
 
-def subtitle(ax, text: str) -> None:
+def subtitle(ax, text):
     ax.text(0, 1.02, text, transform=ax.transAxes, color=INK2, fontsize=9.5, va="bottom")
 
 
-def pollen_axis(ax) -> None:
+def pollen_axis(ax):
     ax.set_yscale("symlog", linthresh=10)
     ax.set_yticks(POLLEN_TICKS, ["0", "10", "100", "1,000"])
     ax.set_ylim(0, 4000)
@@ -87,9 +82,7 @@ def pollen_axis(ax) -> None:
     ax.spines["left"].set_visible(False)
 
 
-# ---------------------------------------------------------------- figures
-
-def fig_season() -> None:
+def fig_season():
     d = pd.read_csv(ROOT / "data" / "louisville_merged.csv", parse_dates=["date"])
     d = d[d["has_pollen"]]
     by = d.groupby("doy")["tree_pollen"]
@@ -120,7 +113,7 @@ def fig_season() -> None:
     plt.close(fig)
 
 
-def fig_forecast(test, yte, mean, lo, hi, coverage) -> None:
+def fig_forecast(test, yte, mean, lo, hi, coverage):
     show = test["year"].to_numpy() == 2019
     dates = test["date"].to_numpy()[show]
     fig, ax = plt.subplots(figsize=(7.5, 3.6))
@@ -133,7 +126,7 @@ def fig_forecast(test, yte, mean, lo, hi, coverage) -> None:
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%b"))
     ax.set_ylabel("Tree pollen (grains/m³)")
 
-    # Direct labels instead of a legend.
+    # label the lines directly instead of using a legend
     ax.text(pd.Timestamp("2019-05-27"), 260, "90% prediction\ninterval", color=BLUE, fontsize=9)
     ax.annotate("observed count", xy=(pd.Timestamp("2019-03-14"), 1040),
                 xytext=(pd.Timestamp("2019-03-19"), 2300), color=INK, fontsize=9,
@@ -148,9 +141,9 @@ def fig_forecast(test, yte, mean, lo, hi, coverage) -> None:
     plt.close(fig)
 
 
-def fig_drivers(model) -> None:
+def fig_drivers(model):
     clo, chi = model.coef_interval()
-    m, clo, chi = model.m[1:], clo[1:], chi[1:]  # drop intercept
+    m, clo, chi = model.w_n[1:], clo[1:], chi[1:]  # skip the intercept
     order = np.argsort(np.abs(m))
     fig, ax = plt.subplots(figsize=(7.0, 4.2))
     for row, j in enumerate(order):
@@ -164,7 +157,7 @@ def fig_drivers(model) -> None:
     ax.spines["left"].set_visible(False)
     ax.xaxis.grid(True)
     ax.set_axisbelow(True)
-    ax.set_xlabel("Effect on log pollen per 1 standard deviation (95% credible interval)")
+    ax.set_xlabel("Effect on log pollen per 1 standard deviation (95% posterior interval)")
     ax.text(0.99, 0.02, "gray = interval includes 0", transform=ax.transAxes,
             ha="right", color=INK2, fontsize=9)
     ax.set_title("Yesterday's pollen and the calendar drive the forecast", pad=34)
@@ -174,7 +167,7 @@ def fig_drivers(model) -> None:
     plt.close(fig)
 
 
-def fig_accuracy(r2: dict) -> None:
+def fig_accuracy(r2):
     names = list(r2)
     vals = np.array([r2[n] for n in names])
     colors = [MUTED, MUTED, BLUE, ORANGE]
@@ -196,9 +189,7 @@ def fig_accuracy(r2: dict) -> None:
     plt.close(fig)
 
 
-# ---------------------------------------------------------------- main
-
-def main() -> None:
+def main():
     FIG.mkdir(exist_ok=True)
     fig_season()
 
@@ -212,7 +203,7 @@ def main() -> None:
     fig_forecast(test, yte, mean, lo, hi, coverage)
     fig_drivers(model)
 
-    # Baselines and MLP, computed exactly as in bayes_regression.py and mlp.py.
+    # baselines and MLP, same as in bayes_regression.py and mlp.py
     clim = train.groupby("doy")["log_tree"].mean().rolling(7, center=True, min_periods=1).mean()
     clim_pred = test["doy"].map(clim).fillna(train["log_tree"].mean()).to_numpy()
     persist = test["log_tree_lag1"].to_numpy()

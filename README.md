@@ -29,6 +29,7 @@ scripts/
   confusion_matrix.png          CNN confusion matrix on the held-out test photos
   fetch_humidity.py             Downloads the humidity file
   build_dataset.py              Builds louisville_merged.csv
+  pollen_forecast.ipynb         Forecasting walkthrough: Bayesian linear regression step by step
   bayes_regression.py           Forecasting method 1: Bayesian linear regression (NumPy only)
   mlp.py                        Forecasting method 2: multilayer perceptron (NumPy only)
   make_figures.py               Report/poster figures (fig_*.png)
@@ -56,7 +57,9 @@ python -m venv .venv
 ### Forecasting models
 
 The data files are already committed, so you can go straight to the models.
-Each script prints every metric quoted below and in the report:
+`scripts/pollen_forecast.ipynb` walks through the Bayesian regression step by
+step (run it from `scripts/`). The scripts print every metric quoted below and
+in the report:
 
 ```bash
 .venv/bin/python scripts/bayes_regression.py
@@ -182,7 +185,7 @@ weakest class, mostly because other grains get predicted as alder.
 A conjugate Normal-Inverse-Gamma model written in NumPy: a Gaussian prior on
 the coefficients that shrinks them toward zero, and an inverse-gamma prior on
 the noise variance. The posterior and the Student-t predictive distribution
-are computed in closed form, so each forecast comes with a credible interval.
+are computed in closed form, so each forecast comes with posterior uncertainty measures.
 
 ### Method 2: MLP (`scripts/mlp.py`)
 
@@ -209,8 +212,8 @@ High 90–1,500, Very High 1,500 and up (grains/m³).
   and the 50% intervals contain 54.9%, so the uncertainty is well calibrated.
   The intervals are wide, though: the typical 90% interval spans a factor of
   about 48 in pollen count.
-- Yesterday's pollen and the time of year do most of the work. Weather adds
-  about 3% of explained variation in the Bayesian model. Wind speed has a
+- Yesterday's pollen and the time of year do most of the work. On the test years, weather adds
+  about 5 percentage points of R² (0.592 without weather, 0.641 with it). Wind speed has a
   small positive effect and rain has no clear effect.
 
 ### Forecasting limitations

@@ -1,10 +1,11 @@
-"""Merge Louisville daily weather (NOAA), humidity (Open-Meteo) and pollen (CDC/NAB).
+"""
+DS 4420 Project - combine the Louisville weather (NOAA), humidity (Open-Meteo)
+and pollen (CDC/NAB) data into one table with one row per day, 2003-2022.
 
-Output: data/louisville_merged.csv, one row per calendar day 2003-2022.
-Every weather day is kept so that lagged/cumulative features are continuous;
-pollen columns are NaN on days the station did not report.
+We keep every day (even without a pollen count) so the lag and running-total
+features don't skip days. Output: data/louisville_merged.csv
 
-Run from the repo root:  .venv/bin/python scripts/build_dataset.py
+Run from the repo root: .venv/bin/python scripts/build_dataset.py
 """
 
 from pathlib import Path
@@ -15,7 +16,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 
-# NOAA weather-type flags worth keeping (1 = occurred, blank = did not).
+# NOAA weather flags we keep (1 = happened that day, blank = didn't)
 FLAGS = {
     "WT01": "fog",
     "WT03": "thunder",
@@ -24,17 +25,17 @@ FLAGS = {
     "WT16": "rain",
     "WT18": "snow_flag",
 }
-GDD_BASE_F = 41.0  # 5 °C, a common base temperature for tree phenology
+GDD_BASE_F = 41.0  # base temperature for growing degree days (5 C)
 
 
-def load_weather() -> pd.DataFrame:
+def load_weather():
     w = pd.read_csv(DATA / "weather_data.csv", encoding="utf-8-sig")
     w["date"] = pd.to_datetime(w["DATE"], format="%m/%d/%Y")
     out = pd.DataFrame({
         "date": w["date"],
         "tmax_f": w["TMAX"],
         "tmin_f": w["TMIN"],
-        # TAVG is only 13% filled, so use the max/min midpoint throughout.
+        # TAVG is mostly missing, so use the average of max and min instead
         "tavg_f": (w["TMAX"] + w["TMIN"]) / 2,
         "prcp_in": w["PRCP"],
         "snow_in": w["SNOW"],
@@ -43,7 +44,7 @@ def load_weather() -> pd.DataFrame:
         "gust2_mph": w["WSF2"],
         "gust5_mph": w["WSF5"],
     })
-    # Wind direction is circular; encode as sin/cos so 350° and 10° are close.
+    # wind direction is circular, so use sin/cos (350 and 10 degrees end up close)
     rad = np.deg2rad(w["WDF2"])
     out["wind_dir_sin"] = np.sin(rad)
     out["wind_dir_cos"] = np.cos(rad)
@@ -52,7 +53,7 @@ def load_weather() -> pd.DataFrame:
     return out
 
 
-def load_pollen() -> pd.DataFrame:
+def load_pollen():
     p = pd.read_csv(DATA / "louisville_pollen_daily.csv", parse_dates=["date"])
     wide = p.pivot(index="date", columns="pollen_type",
                    values=["pollen_count", "pollen_count_class"])
@@ -64,14 +65,14 @@ def load_pollen() -> pd.DataFrame:
     }).reset_index()
 
 
-def load_humidity() -> pd.DataFrame:
-    # From scripts/fetch_humidity.py (Open-Meteo ERA5 reanalysis, not station-measured).
+def load_humidity():
+    # made by fetch_humidity.py (from a weather model, not the airport sensors)
     return pd.read_csv(DATA / "louisville_humidity_daily.csv", parse_dates=["date"])
 
 
-def add_features(df: pd.DataFrame) -> pd.DataFrame:
+def add_features(df):
     df = df.sort_values("date").reset_index(drop=True)
-    # Guard: lags below assume one row per consecutive day.
+    # make sure there are no missing dates, since the lags assume consecutive days
     assert (df["date"].diff().dropna() == pd.Timedelta(days=1)).all()
 
     df["year"] = df["date"].dt.year
@@ -80,18 +81,18 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df["doy_sin"] = np.sin(2 * np.pi * df["doy"] / 365.25)
     df["doy_cos"] = np.cos(2 * np.pi * df["doy"] / 365.25)
 
-    # Growing degree days accumulated since Jan 1 (drives when trees release pollen).
+    # growing degree days added up since Jan 1
     gdd = (df["tavg_f"] - GDD_BASE_F).clip(lower=0)
     df["gdd_cum"] = gdd.groupby(df["year"]).cumsum()
 
-    # Yesterday's weather and short rolling windows.
+    # yesterday's weather and 3-day windows
     df["prcp_lag1"] = df["prcp_in"].shift(1)
     df["tmax_lag1"] = df["tmax_f"].shift(1)
     df["rh_mean_lag1"] = df["rh_mean_pct"].shift(1)
     df["tavg_roll3"] = df["tavg_f"].rolling(3).mean()
     df["prcp_roll3"] = df["prcp_in"].rolling(3).sum()
 
-    # Pollen target transforms and autoregressive lags (NaN if a day is missing).
+    # log pollen (the target) and lagged pollen
     df["log_tree"] = np.log1p(df["tree_pollen"])
     df["log_weed"] = np.log1p(df["weed_pollen"])
     df["log_tree_lag1"] = df["log_tree"].shift(1)
@@ -100,7 +101,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
+def main():
     df = (load_weather()
           .merge(load_humidity(), on="date", how="left", validate="1:1")
           .merge(load_pollen(), on="date", how="left", validate="1:1"))
