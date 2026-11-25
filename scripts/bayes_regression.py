@@ -126,8 +126,8 @@ def main():
 
     print(f"train days {len(train)}  test days {len(test)}\n")
     print("Test metrics on log(1 + grains/m^3):")
-    print_metrics(yte, {"climatology (day of year)": clim_pred,
-                        "persistence (yesterday)": persist,
+    print_metrics(yte, {"day-of-year average": clim_pred,
+                        "same as yesterday": persist,
                         "Bayes, lag only": lag_only,
                         "Bayes, lag + season (no weather)": lag_season,
                         "Bayes, lag + season + weather": mean})
